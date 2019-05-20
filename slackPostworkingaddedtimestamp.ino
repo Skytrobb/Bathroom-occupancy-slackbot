@@ -19,9 +19,10 @@ const String slack_hook_url = "https://hooks.slack.com/services/TJER3Q2KC/BJKTKN
 const String slack_emoji = "heart";
 const String ToiletInUseMessage = "Bathroom is currently occupied as of: ";
 const String ToiletIsFree = "Bathroom has become vacant as of: ";
+float SleepTime = 30e6; // time in microseconds
 
 
-EEPROM.begin(4);
+
 WiFiUDP ntpUDP;
 const String slack_username = "tayjojo";
 int AnalogData;
@@ -113,27 +114,33 @@ void loop() {
   
 }
 
-void handleDoorHasOpened() {
+bool handleDoorHasOpened() {
+  bool isSuccessful;
   timeClient.update(); //get current time
   String CombinedVacant = (ToiletIsFree + timeClient.getFormattedTime()); // concatenate vacant message with timestamp
   Serial.println("door has closed");
   Serial.println(timeClient.getFormattedTime());
-  postMessageToSlack(CombinedVacant); // send message to slack
-  requestsuccess = Serial.println("toilet is free");
+  isSuccessful = postMessageToSlack(CombinedVacant); // send message to slack
+  Serial.println("toilet is free");
   writeDoorStatusToEEPROM(DoorStatusAddress, false); // store new door status (door is open)
+
+  return isSuccessful;
 }
 
-void handleDoorHasClosed() {
+bool handleDoorHasClosed() {
+  bool isSuccessful;
   timeClient.update(); //get current time
   String CombinedOccupied = (ToiletInUseMessage + timeClient.getFormattedTime()); // concatenate occupied message with timestamp
   Serial.println("door has opened");
   Serial.println(timeClient.getFormattedTime());
-  postMessageToSlack(CombinedOccupied); // send message to slack
+  isSuccessful = postMessageToSlack(CombinedOccupied); // send message to slack
   writeDoorStatusToEEPROM(DoorStatusAddress, true); // store new door status (door is open)
+  
+  return isSuccessful;
 }
 
 void writeDoorStatusToEEPROM(int address, bool doorstatus) {
-  EEPROM.write(address, doorstatus)
+  EEPROM.write(address, doorstatus);
   EEPROM.commit();
 }
 
@@ -142,39 +149,38 @@ void writeDoorStatusToEEPROM(int address, bool doorstatus) {
 
 void setup() {
 
+  //0 is open
+  //1 is closed
+
   //when the door is closed, rst and wake will be connected and it will wake the device
   //when the device is awake perform these actions:
+  //-1. make sure it's not after 6pm
   //0. read EEPROM to see if door status has changed
   //1. read pin 0 and see if the door is opened or closed
   //2. send message to slack if the digitalRead returns HIGH
   //3. go to sleep for 30 seconds
   //4. upon waking up again, check the status of digitalRead, if it is LOW, send message to slack and go to sleep
- 
-  bool wasDoorOpen = EEPROM.read(DoorStatusAddress);
+  EEPROM.begin(4);
+  bool PreviousDoorStatus = EEPROM.read(DoorStatusAddress);
+  bool CurrentDoorStatus = digitalRead(DoorReadPin);
+  bool isSuccessful;
 
-  bool requestsuccess;
-  bool isDoorOpen = digitalRead(DoorReadPin);
-
-  if(isDoorOpen) {
-    timeClient.update();
-    String CombinedVacant = (ToiletIsFree + timeClient.getFormattedTime());
-    postMessageToSlack(CombinedVacant);
-  } else if (
-
-  if(AnalogData > 512 && isBathroomInUse) {
-
-
-  } else if (AnalogData < 512 && !isBathroomInUse) {
-    String combinedInUse = (ToiletInUseMessage + timeClient.getFormattedTime());
-    requestsuccess = postMessageToSlack(combinedInUse);
-    isBathroomInUse = true;
-    Serial.println("is in use");
+  if(PreviousDoorStatus == CurrentDoorStatus) { // if there has been no change to the door
+    ESP.deepSleep(SleepTime);
+  } else if(CurrentDoorStatus < PreviousDoorStatus) { // if door has been opened
+    connect();
+    isSuccessful = handleDoorHasOpened();
+    ESP.deepSleep(SleepTime);
+  } else if(CurrentDoorStatus > PreviousDoorStatus) { // if door has been closed
+    connect();
+    isSuccessful = handleDoorHasClosed();
+    ESP.deepSleep(SleepTime);
   }
-  Serial.println(requestsuccess);
+  Serial.println("is successful? " + isSuccessful);
+  // Serial.println(requestsuccess);
   // Start handling OTA updates
-  ArduinoOTA.handle();
-  Serial.println(AnalogData);
+  // ArduinoOTA.handle();
+  //Serial.println(AnalogData);
 
-  //digitalWrite(ledPin, LOW);
-  delay(2000);
+  // delay(2000);
 }
