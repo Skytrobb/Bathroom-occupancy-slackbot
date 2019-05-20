@@ -3,6 +3,9 @@
 #include <ArduinoOTA.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
+#include <EEPROM.h>
+
+int DoorStatusAddress = 1;
 /*
  WIFI CONFIGURATION
  */
@@ -14,23 +17,24 @@ char pwd[] = "hunterisbusted";
  */
 const String slack_hook_url = "https://hooks.slack.com/services/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";
 const String slack_emoji = "heart";
-const String slack_message = "hey world";
+const String ToiletInUseMessage = "Bathroom is currently occupied as of: ";
+const String ToiletIsFree = "Bathroom has become vacant as of: ";
 
 
+EEPROM.begin(4);
 WiFiUDP ntpUDP;
 const String slack_username = "tayjojo";
 int AnalogData;
 bool isBathroomInUse = false;
+int DoorReadPin = 5;
+
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
-NTPClient timeClient(ntpUDP, "2.us.pool.ntp.org", 21600, 1000); //21600 is the offset
-void setup()
-{
- // pinMode(ledPin, OUTPUT);
- // pinMode(buttonPin, INPUT_PULLUP);
+NTPClient timeClient(ntpUDP, "2.us.pool.ntp.org", 21600); //21600 is the offset, add another argument at end to set update interval
+void connect() {
+
   Serial.begin(115200);
-  Serial.println();
 
   WiFi.begin(SSID, pwd);
   timeClient.begin();
@@ -65,7 +69,6 @@ void setup()
   });
   ArduinoOTA.begin();
 }
-
 
 
 bool postMessageToSlack(String msg)
@@ -106,24 +109,61 @@ bool postMessageToSlack(String msg)
     return false;
   }
 }
+void loop() {
+  
+}
 
-void loop()
+void handleDoorHasOpened() {
+  timeClient.update(); //get current time
+  String CombinedVacant = (ToiletIsFree + timeClient.getFormattedTime()); // concatenate vacant message with timestamp
+  Serial.println("door has closed");
+  Serial.println(timeClient.getFormattedTime());
+  postMessageToSlack(CombinedVacant); // send message to slack
+  requestsuccess = Serial.println("toilet is free");
+  writeDoorStatusToEEPROM(DoorStatusAddress, false); // store new door status (door is open)
+}
 
-{
-  const String ToiletInUseMessage = "Bathroom is currently occupied as of: ";
-  const String ToiletIsFree = "Bathroom has become vacant as of: ";
+void handleDoorHasClosed() {
+  timeClient.update(); //get current time
+  String CombinedOccupied = (ToiletInUseMessage + timeClient.getFormattedTime()); // concatenate occupied message with timestamp
+  Serial.println("door has opened");
+  Serial.println(timeClient.getFormattedTime());
+  postMessageToSlack(CombinedOccupied); // send message to slack
+  writeDoorStatusToEEPROM(DoorStatusAddress, true); // store new door status (door is open)
+}
+
+void writeDoorStatusToEEPROM(int address, bool doorstatus) {
+  EEPROM.write(address, doorstatus)
+  EEPROM.commit();
+}
+
+
+
+
+void setup() {
+
+  //when the door is closed, rst and wake will be connected and it will wake the device
+  //when the device is awake perform these actions:
+  //0. read EEPROM to see if door status has changed
+  //1. read pin 0 and see if the door is opened or closed
+  //2. send message to slack if the digitalRead returns HIGH
+  //3. go to sleep for 30 seconds
+  //4. upon waking up again, check the status of digitalRead, if it is LOW, send message to slack and go to sleep
+ 
+  bool wasDoorOpen = EEPROM.read(DoorStatusAddress);
+
   bool requestsuccess;
-  AnalogData = analogRead(0);
+  bool isDoorOpen = digitalRead(DoorReadPin);
+
+  if(isDoorOpen) {
+    timeClient.update();
+    String CombinedVacant = (ToiletIsFree + timeClient.getFormattedTime());
+    postMessageToSlack(CombinedVacant);
+  } else if (
 
   if(AnalogData > 512 && isBathroomInUse) {
-    String CombinedVacant = (ToiletIsFree + timeClient.getFormattedTime());
-      timeClient.update();
 
-     Serial.println(timeClient.getFormattedTime());
 
-    postMessageToSlack(CombinedVacant);
-    requestsuccess = Serial.println("toilet is free");
-    isBathroomInUse = false;
   } else if (AnalogData < 512 && !isBathroomInUse) {
     String combinedInUse = (ToiletInUseMessage + timeClient.getFormattedTime());
     requestsuccess = postMessageToSlack(combinedInUse);
