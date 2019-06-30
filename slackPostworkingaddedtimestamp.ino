@@ -15,7 +15,7 @@ char pwd[] = "hunterisbusted";
 /*
  SLACK CONFIGURATION
  */
-const String slack_hook_url = "https://hooks.slack.com/services/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";
+const String slack_hook_url = "https://hooks.slack.com/services/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";
 const String slack_emoji = "heart";
 const String ToiletInUseMessage = "Bathroom is currently occupied as of: ";
 const String ToiletIsFree = "Bathroom has become vacant as of: ";
@@ -32,7 +32,7 @@ int DoorReadPin = 5; //D1
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
-NTPClient timeClient(ntpUDP, "2.us.pool.ntp.org", 21600); //21600 is the offset, add another argument at end to set update interval
+NTPClient timeClient(ntpUDP, "2.us.pool.ntp.org", -21600); //21600 is the offset, add another argument at end to set update interval
 void connect() {
 
   
@@ -80,6 +80,8 @@ bool postMessageToSlack(String msg)
 
   // Use WiFiClient class to create TCP connections
   WiFiClientSecure client;
+  // ssl cert is not working anymore, use http
+  client.setInsecure();
   const int httpsPort = 443;
   if (!client.connect(host, httpsPort)) {
     Serial.println("Connection failed :-(");
@@ -190,10 +192,4 @@ void setup() {
     ESP.deepSleep(SleepTime);
   }
   Serial.println("is successful? " + isSuccessful);
-  // Serial.println(requestsuccess);
-  // Start handling OTA updates
-  // ArduinoOTA.handle();
-  //Serial.println(AnalogData);
-
-  // delay(2000);
 }
