@@ -10,7 +10,7 @@ int DoorStatusAddress = 2;
  WIFI CONFIGURATION
  */
 char SSID[] = "lumbergh";
-char pwd[] = "hunterisbusted";
+char pwd[] = "";
 
 /*
  SLACK CONFIGURATION
